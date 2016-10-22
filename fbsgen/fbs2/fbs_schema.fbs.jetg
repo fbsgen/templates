@@ -1,0 +1,30 @@
+#import fbsgen/base#
+#import fbsgen/fbs2/common
+#define(ProtoModule module, Registry registry)
+«registry_block(registry, module)»
+#registry_block(Registry registry, ProtoModule module)
+«registry_block_main(registry, module, (String)module.o.get("fbs_schema_stg"), (String)module.o.get("fbs_schema_fqcn"))»
+#end
+
+#registry_block_main(Registry registry, ProtoModule module, String stg, String fqcn)
+«if(is_null_or_empty(stg))»
+«module.err.get("The option: fbs_schema_stg requires a value.")»
+«endif»
+namespace «module.config.get("fbsgen/fbs2/fbs_schema.fbs.package_name")»;
+
+«registry.enumGroups:EnumGroup:enum_block(module, stg, fqcn); separator="\n"»
+«registry.messages:Message:message_block(module, stg, fqcn); separator="\n"»
+#end
+
+#enum_block(EnumGroup eg, ProtoModule module, String stg, String fqcn)
+«if(stg.indexOf(eg.proto.o.get("stgs").toString()) != -1)»
+«common::fbs_enum_block(eg, module, eg.nested, fqcn != null)»
+«endif»
+#end
+
+#message_block(Message message, ProtoModule module, String stg, String fqcn)
+«if(stg.indexOf(message.proto.o.get("stgs").toString()) != -1)»
+«common::fbs_message_block(message, module, null, message.nested, false, fqcn != null)»
+«endif»
+#end
+

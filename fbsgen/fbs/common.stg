@@ -1,0 +1,44 @@
+import "fbsgen/base"
+import "fbsgen/dict"
+
+fbs_enum_name(eg, module, fqcn) ::= <%
+«if(fqcn)»
+«eg.cppFullName; format="::==__"»
+«else»
+«eg.cppRelativeName»
+«endif»
+%>
+
+fbs_message_name(message, module, fqcn) ::= <%
+«if(fqcn)»
+«message.cppFullName; format="::==__"»
+«else»
+«message.cppRelativeName»
+«endif»
+%>
+
+fbs_field_udt_name(field, module, fqcn) ::= <%
+«if(fqcn)»
+«field.udt.cppFullName; format="::==__"»
+«else»
+«field.udt.cppRelativeName»
+«endif»
+%>
+
+fbs_enum_block(eg, module, nested=false, fqcn=false) ::= <<
+enum «fbs_enum_name(eg, module, fqcn)» : «get_fbs_int_type.(eg.ta.name)»«ta_params(eg.ta, module)» {
+  «eg.declaredValues:{v|«v.name» = «if(eg.ta.p.("bit_flags"))»«get_bit_pot_shiftnum.(v.number)»«else»«v.number»«endif»}; separator=",\n"»
+}
+>>
+
+fbs_message_block(message, module, nested=false, traverse_nested=true, fqcn=false) ::= <<
+«get_fbs_message_type.(message)» «fbs_message_name(message, module, fqcn)»«if(message.ta)»«ta_params(message.ta, module)»«endif» {
+  «message.declaredFields:{f|«f.name»: «if(f.repeated)»[«endif»«if(f.udt)»«fbs_field_udt_name(f, module, fqcn)»«else»«f.fbsType»«endif»«if(f.repeated)»]«endif» (id: «module.w.n.(f.number).dec.num»«if(f.o.("deprecated"))», deprecated«endif»);}; separator="\n"»
+}
+«if(traverse_nested && !message.nestedEnumGroups.empty)»
+«module.w.add.({«message.nestedEnumGroups:fbs_enum_block(module, true, fqcn); separator="\n"»})»
+«endif»
+«if(traverse_nested)»
+«message.nestedMessages:fbs_message_block(module, true, traverse_nested, fqcn); separator="\n"»
+«endif»
+>>

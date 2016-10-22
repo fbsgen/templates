@@ -1,0 +1,295 @@
+import "fbsgen/base"
+import "fbsgen/dict"
+
+proto_block(proto, module) ::= <<
+«base_header(proto, module, "// ")»
+
+#ifndef FLATBUFFERS_GENERATED_«proto.file.name; format="\\.proto==&&_==&&UPPER"»_«proto.packageName; format="\\.==_&&UPPER"»_H_
+#define FLATBUFFERS_GENERATED_«proto.file.name; format="\\.proto==&&_==&&UPPER"»_«proto.packageName; format="\\.==_&&UPPER"»_H_
+
+«if(proto.importedProtos.empty)»
+#include "flatbuffers/flatbuffers.h"
+
+«elseif(module.w.k.("p").keq.(proto.file.parentFile.name))»
+«proto.importedProtos:imported_proto_header(proto, module); separator="\n"»
+«else»
+#include "flatbuffers/flatbuffers.h"
+
+«proto.importedProtos:imported_proto(proto, module)»
+«endif»
+
+
+«proto_body(proto, module, split_dot.(proto.packageName))»
+
+#endif  // FLATBUFFERS_GENERATED_«proto.file.name; format="\\.proto==&&_==&&UPPER"»_«proto.packageName; format="\\.==_&&UPPER"»_H_
+
+>>
+
+imported_proto_header(imported, proto, module) ::= <<
+«if(!imported.messages.empty)»
+«if(module.w.k.(imported.file.parentFile.canonicalPath).keq.(proto.file.parentFile.canonicalPath))»
+#include "«imported.file.name; format="\\.proto==_generated.h"»"
+«else»
+#include "«module.w.k.(proto.file.path).ksubstr.(module.env.basePrefix); format="\\.proto==_generated.h&&\\.\\.\\/==../../../&&\\/p\\/==/g/cpp/"»"
+«endif»
+«endif»
+>>
+
+imported_proto(imported, proto, module) ::= <<
+«imported.messages:message_collect(module)»
+«if(!module.w.emptyMap)»
+«imported_proto_body(imported, proto, module, split_dot.(imported.packageName))»
+«module.w.clearMap»
+«endif»
+>>
+
+imported_proto_body(imported, proto, module, ns_list) ::= <<
+«ns_list:{ns|namespace «ns» {}; separator="\n"»
+«module.w.map.("message"):{m|struct «m.cppRelativeName»;}; separator="\n"»
+«reverse(ns_list):{ns|\}  // namespace «ns»}; separator="\n"»
+>>
+
+enum_collect(eg, module) ::= <%
+«module.w.k.("eg").putlist.(eg)»
+%>
+
+message_collect(message, module, collect_eg=false) ::= <%
+«module.w.k.("message").putlist.(message)»
+«if(message.struct)»
+«module.w.k.("struct").putlist.(message)»
+«else»
+«module.w.k.("table").putlist.(message)»
+«endif»
+«if(collect_eg)»
+«message.nestedEnumGroups:enum_collect(module)»
+«endif»
+«message.nestedMessages:message_collect(module, collect_eg)»
+%>
+
+proto_body(proto, module, ns_list) ::= <<
+«ns_list:{ns|namespace «ns» {}; separator="\n"»
+
+«if(module.o.("cpp_skip_enum_type") && module.o.("cpp_relaxed_enum_type"))»
+«proto.messages:message_collect(module)»
+«module.w.map.("message"):{m|struct «m.cppRelativeName»;}; separator="\n"»
+
+«else»
+«proto.messages:message_collect(module, true)»
+«module.w.map.("message"):{m|struct «m.cppRelativeName»;}; separator="\n"»
+
+«proto.enumGroups:enum_block(module); separator="\n"»
+«module.w.map.("eg"):enum_block(module); separator="\n"»
+«endif»
+«module.w.map.("struct"):struct_block(module); separator="\n"»
+«module.w.map.("table"):table_block(module); separator="\n"»
+«reverse(ns_list):{ns|\}  // namespace «ns»}; separator="\n"»
+>>
+
+enum_block(eg, module, collect=false) ::= <<
+enum «if(module.o.("cpp_scoped_enums"))»class «endif»«if(!module.o.("cpp_relaxed_enum_type"))»«eg.cppRelativeName» «if(module.o.("cpp_scoped_enums"))»: «eg.ta.name»_t «endif»«endif»{
+  «eg.values:{v|«if(!module.o.("cpp_scoped_enums"))»«eg.cppRelativeName»_«endif»«v.name» = «v.number»}; separator=",\n"»
+};
+«if(module.w.n.(eg.lastValue.number).lt.("20"))»
+
+inline const char **EnumNames«eg.cppRelativeName»() {
+  static const char *names[] = { «get_sparse_enum_value_names.(eg):{s|"«s»"}; separator=", "», nullptr };
+  return names;
+}
+
+«if(module.o.("cpp_relaxed_enum_type"))»
+inline const char *EnumName«eg.cppRelativeName»(int e) { return EnumNames«eg.cppRelativeName»()[static_cast<int>(e) - static_cast<int>(«eg.cppRelativeName»«if(module.o.("cpp_scoped_enums"))»::«else»_«endif»«eg.firstValue.name»)]; }
+«else»
+inline const char *EnumName«eg.cppRelativeName»(«eg.cppRelativeName» e) { return EnumNames«eg.cppRelativeName»()[static_cast<int>(e)«if(eg.ta.p.("bit_flags"))» - static_cast<int>(«eg.cppRelativeName»«if(module.o.("cpp_scoped_enums"))»::«else»_«endif»«eg.firstValue.name»)«endif»]; }
+«endif»
+«endif»
+
+>>
+
+table_block(message, module) ::= <<
+struct «message.cppRelativeName» FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  enum {
+    «message.nonDeprecatedFields:{f|VT_«f.name; format="UPPER"» = «get_fbs_field_offset.(f.number)»,}; separator="\n"»
+  };
+  «message.nonDeprecatedFields:table_field_block(module)»
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           «message.nonDeprecatedFields:verify_field_block(module)»           verifier.EndTable();
+  }
+};
+
+struct «message.cppRelativeName»Builder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  «message.nonDeprecatedFields:builder_field_block(module); separator="\n"»
+  «message.cppRelativeName»Builder(flatbuffers::FlatBufferBuilder &_fbb) : fbb_(_fbb) { start_ = fbb_.StartTable(); }
+  «message.cppRelativeName»Builder &operator=(const «message.cppRelativeName»Builder &);
+  flatbuffers::Offset<«message.cppRelativeName»> Finish() {
+    auto o = flatbuffers::Offset<«message.cppRelativeName»>(fbb_.EndTable(start_, «message.fieldCount»));
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<«message.cppRelativeName»> Create«message.cppRelativeName»(flatbuffers::FlatBufferBuilder &_fbb,
+   «message.nonDeprecatedFields:create_field_param(module); separator=",\n"») {
+  «message.cppRelativeName»Builder builder_(_fbb);
+  «sort_fbs_create_fields.(message):{f|builder_.add_«f.name»(«f.name»);}; separator="\n"»
+  return builder_.Finish();
+}
+
+>>
+
+table_field_block(field, module) ::= <<
+«if(field.repeated)»
+const flatbuffers::Vector<«cpp_field_singular_type(field, module)»> *«field.name»() const { return GetPointer<const flatbuffers::Vector<«cpp_field_singular_type(field, module)»> *>(VT_«field.name; format="UPPER"»); }
+«elseif(field.messageField)»
+«if(field.message.struct)»
+const «field.cppType» *«field.name»() const { return GetStruct<const «field.cppType» *>(VT_«field.name; format="UPPER"»); }
+«if(module.o.("cpp_gen_mutable"))»
+«field.cppType» *mutable_«field.name»() { return GetStruct<«field.cppType» *>(VT_«field.name; format="UPPER"»); }
+«endif»
+«else»
+const «field.cppType» *«field.name»() const { return GetPointer<const «field.cppType» *>(VT_«field.name; format="UPPER"»); }
+«if(module.o.("cpp_gen_mutable"))»
+«field.cppType» *mutable_«field.name»() { return GetPointer<«field.cppType» *>(VT_«field.name; format="UPPER"»); }
+«endif»
+«endif»
+«elseif(field.delimited)»
+const flatbuffers::String *«field.name»() const { return GetPointer<const flatbuffers::String *>(VT_«field.name; format="UPPER"»); }
+«if(module.o.("cpp_gen_mutable"))»
+flatbuffers::String *mutable_«field.name»() { return GetPointer<flatbuffers::String *>(VT_«field.name; format="UPPER"»); }
+«endif»
+«elseif(field.enumField)»
+«if(module.o.("cpp_relaxed_enum_type"))»
+«field.eg.ta.name»_t «field.name»() const { return GetField<«field.eg.ta.name»_t>(VT_«field.name; format="UPPER"», 0); }
+«if(module.o.("cpp_gen_mutable"))»
+bool mutate_«field.name»(uint8_t _«field.name») { return SetField(VT_«field.name; format="UPPER"», _«field.name»); }
+«endif»
+«else»
+«field.cppType» «field.name»() const { return static_cast<«field.cppType»>(GetField<«field.eg.ta.name»_t>(VT_«field.name; format="UPPER"», 0)); }
+«if(module.o.("cpp_gen_mutable"))»
+bool mutate_«field.name»(«field.cppType» _«field.name») { return SetField(VT_«field.name; format="UPPER"», static_cast<«field.eg.ta.name»_t>(_«field.name»)); }
+«endif»
+«endif»
+«elseif(field.boolField)»
+«if(module.o.("cpp_bool_as_uint8"))»uint8_t«else»bool«endif» «field.name»() const { return GetField<uint8_t>(VT_«field.name; format="UPPER"», 0)«if(!module.o.("cpp_bool_as_uint8"))» != 0«endif»; }
+«if(module.o.("cpp_gen_mutable"))»
+«if(module.o.("cpp_bool_as_uint8"))»uint8_t«else»bool«endif» mutate_«field.name»(«if(module.o.("cpp_bool_as_uint8"))»uint8_t«else»bool«endif» _«field.name») { return SetField(VT_«field.name; format="UPPER"», «if(module.o.("cpp_bool_as_uint8"))»_«field.name»«else»static_cast<uint8_t>(_«field.name»)«endif»); }
+«endif»
+«elseif(field.fpt)»
+«field.class.simpleName; format="LOWER"» «field.name»() const { return GetField<«field.class.simpleName; format="LOWER"»>(VT_«field.name; format="UPPER"», 0); }
+«if(module.o.("cpp_gen_mutable"))»
+bool mutate_«field.name»(«field.class.simpleName; format="LOWER"» _«field.name») { return SetField(VT_«field.name; format="UPPER"», _«field.name»); }
+«endif»
+«else»
+«field.class.simpleName; format="LOWER"»_t «field.name»() const { return GetField<«field.class.simpleName; format="LOWER"»_t>(VT_«field.name; format="UPPER"», 0); }
+«if(module.o.("cpp_gen_mutable"))»
+bool mutate_«field.name»(«field.class.simpleName; format="LOWER"»_t _«field.name») { return SetField(VT_«field.name; format="UPPER"», _«field.name»); }
+«endif»
+«endif»
+>>
+
+verify_field_block(field, module) ::= <<
+«if(field.repeated)»
+VerifyField<flatbuffers::uoffset_t>(verifier, VT_«field.name; format="UPPER"») &&
+verifier.Verify(«field.name»()) &&
+«if(field.messageField)»
+«if(!field.message.struct)»
+verifier.VerifyVectorOfTables(«field.name»()) &&
+«endif»
+«elseif(field.delimited)»
+verifier.VerifyVectorOfStrings(«field.name»()) &&
+«endif»
+«elseif(field.messageField)»
+«if(field.message.struct)»
+VerifyField<«field.cppType»>(verifier, VT_«field.name; format="UPPER"») &&
+«else»
+VerifyField<flatbuffers::uoffset_t>(verifier, VT_«field.name; format="UPPER"») &&
+verifier.VerifyTable(«field.name»()) &&
+«endif»
+«elseif(field.delimited)»
+VerifyField<flatbuffers::uoffset_t>(verifier, VT_«field.name; format="UPPER"») &&
+verifier.Verify(«field.name»()) &&
+«elseif(field.enumField)»
+VerifyField<«field.eg.ta.name»_t>(verifier, VT_«field.name; format="UPPER"») &&
+«elseif(field.boolField)»
+VerifyField<uint8_t>(verifier, VT_«field.name; format="UPPER"») &&
+«elseif(field.fpt)»
+VerifyField<«field.class.simpleName; format="LOWER"»>(verifier, VT_«field.name; format="UPPER"») &&
+«else»
+VerifyField<«field.class.simpleName; format="LOWER"»_t>(verifier, VT_«field.name; format="UPPER"») &&
+«endif»
+>>
+
+builder_field_block(field, module) ::= <%
+«if(field.repeated)»
+void add_«field.name»(«cpp_field_type(field, module)» «field.name») { fbb_.AddOffset(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name»); }
+«elseif(field.messageField)»
+«if(field.message.struct)»
+void add_«field.name»(const «field.cppType» *«field.name») { fbb_.AddStruct(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name»); }
+«else»
+void add_«field.name»(flatbuffers::Offset<«field.cppType»> «field.name») { fbb_.AddOffset(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name»); }
+«endif»
+«elseif(field.delimited)»
+void add_«field.name»(flatbuffers::Offset<flatbuffers::String> «field.name») { fbb_.AddOffset(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name»); }
+«elseif(field.enumField)»
+«if(module.o.("cpp_relaxed_enum_type"))»
+void add_«field.name»(«field.eg.ta.name»_t «field.name») { fbb_.AddElement<«field.eg.ta.name»_t>(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name», 0); }
+«else»
+void add_«field.name»(«field.cppType» «field.name») { fbb_.AddElement<«field.eg.ta.name»_t>(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», static_cast<«field.eg.ta.name»_t>(«field.name»), 0); }
+«endif»
+«elseif(field.boolField)»
+void add_«field.name»(«if(module.o.("cpp_bool_as_uint8"))»uint8_t«else»bool«endif» «field.name») { fbb_.AddElement<uint8_t>(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «if(module.o.("cpp_bool_as_uint8"))»«field.name»«else»static_cast<uint8_t>(«field.name»)«endif», 0); }
+«elseif(field.fpt)»
+void add_«field.name»(«field.class.simpleName; format="LOWER"» «field.name») { fbb_.AddElement<«field.class.simpleName; format="LOWER"»>(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name», 0); }
+«else»
+void add_«field.name»(«field.class.simpleName; format="LOWER"»_t «field.name») { fbb_.AddElement<«field.class.simpleName; format="LOWER"»_t>(«field.owner.cppRelativeName»::VT_«field.name; format="UPPER"», «field.name», 0); }
+«endif»
+%>
+
+create_field_param(field, module) ::= <%
+«if(field.boolField && !field.repeated && !module.o.("cpp_bool_as_uint8"))»
+bool «field.name» = false
+«elseif(field.repeated || !field.enumField || module.o.("cpp_relaxed_enum_type"))»
+«cpp_field_type(field, module)»«if(field.repeated)» «elseif(!field.messageField)» «elseif(!field.message.struct)» «endif»«field.name» = 0
+«else»
+«field.cppType» «field.name» = 
+«if(field.eg.ta.p.("bit_flags"))»
+static_cast<«field.cppType»>(0)
+«else»
+«field.cppType»«if(module.o.("cpp_scoped_enums"))»::«else»_«endif»«field.eg.firstValue.name»
+«endif»
+«endif»
+%>
+
+struct_block(message, module) ::= <<
+«struct_body(message, module, get_struct_md.(message))»
+>>
+
+struct_body(message, module, md) ::= <<
+MANUALLY_ALIGNED_STRUCT(«md.minAlign») «message.cppRelativeName» FLATBUFFERS_FINAL_CLASS {
+ private:
+  «md.fields:{f|«cpp_struct_field_type(f, module, true)» «if(f.repeated)»__«f.name»«else»«f.name»_«endif»;}; separator="\n"»
+
+ public:
+  «message.cppRelativeName»(«message.fields:{f|«cpp_struct_field_type(f, module)» «if(f.messageField)»&«endif»_«f.name»}; separator=", "»)
+    : «md.fields:{f|«if(f.repeated)»__«f.name»(0)«else»«f.name»_(«if(f.messageField)»_«f.name»«else»flatbuffers::EndianScalar(«if(f.enumField && !module.o.("cpp_relaxed_enum_type"))»static_cast<«f.eg.ta.name»_t>(_«f.name»)«elseif(f.boolField && !module.o.("cpp_bool_as_uint8"))»static_cast<uint8_t>(_«f.name»)«else»_«f.name»«endif»)«endif»)«endif»}; separator=", "» { «md.paddedFields:{f|(void)__«f.name»; }»}
+
+  «message.fields:struct_field_method(module)»
+};
+STRUCT_END(«message.cppRelativeName», «md.sizeOf»);
+
+>>
+
+struct_field_method(f, module) ::= <<
+«cpp_struct_field_type(f, module)» «if(f.messageField)»&«endif»«f.name»() const { return «if(f.messageField)»«f.name»_«elseif(f.enumField && !module.o.("cpp_relaxed_enum_type"))»static_cast<«f.cppType»>(flatbuffers::EndianScalar(«f.name»_))«else»flatbuffers::EndianScalar(«f.name»_)«if(f.boolField && !module.o.("cpp_bool_as_uint8"))» != 0«endif»«endif»; }
+«if(module.o.("cpp_gen_mutable"))»
+«if(f.messageField)»
+«f.cppType» &mutable_«f.name»() { return «f.name»_; }
+«elseif(f.enumField)»
+void mutate_«f.name»(«cpp_struct_field_type(f, module)» _«f.name») { flatbuffers::WriteScalar(&«f.name»_, static_cast<«f.eg.ta.name»_t>(_«f.name»)); }
+«else»
+void mutate_«f.name»(«cpp_struct_field_type(f, module)» _«f.name») { flatbuffers::WriteScalar(&«f.name»_, «if(f.boolField && !module.o.("cpp_bool_as_uint8"))»static_cast<uint8_t>(_«f.name»)«else»_«f.name»«endif»); }
+«endif»
+«endif»
+>>
+

@@ -1,0 +1,210 @@
+#import fbsgen/base#
+#define (ProtoModule module, Proto proto)
+«proto_block(proto, module)»
+
+#proto_block(Proto proto, ProtoModule module)
+<!DOCTYPE html>
+<html>
+<head>
+  <title>
+    «if(module.o.get("raw"))»raw«else»fbs«endif»: «proto.sourcePath»
+  </title>
+  <style>
+    body {
+      color: #555;
+      background-color: #EEE;
+      font-family: 'Helvetica Neue', Helvetica, 'Segoe UI', Arial, freesans, sans-serif;
+      font-size: 1.1em;
+    }
+    a {
+      text-decoration: none;
+    }
+    div.nested {
+      margin-left: 1em;
+    }
+    div.nested h2 {
+      margin-top: 0.5em;
+    }
+    div.message h2, div.enum h2 {
+      margin-bottom: 0;
+    }
+    div.message h2 div, div.enum h2 div {
+      font-weight: normal;
+      font-size: 0.75em;
+    }
+    div.message h2 a {
+      color: #CD5C5C;
+    }
+    div.enum h2 a {
+      color: #6B8E23;
+    }
+    div.message h2 span, div.enum h2 span {
+      font-size: 0.73em;
+    }
+    div.field {
+      margin-left: 1em;
+    }
+    div.field > span {
+      color: #4682B4;
+    }
+    div.field > a {
+      color: #CD5C5C;
+    }
+    div.e.field > a {
+      color: #6B8E23;
+    }
+    h2 > div.top {
+      font-family: Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+    }
+    .comment {
+      color: #999988;
+      font-family: Consolas, 'Liberation Mono', Menlo, Courier, monospace;
+      font-size: 0.8em;
+    }
+    .attr {
+      font-weight: normal;
+    }
+    div.message > h2 > div.comment, div.message > h2 > div.top, div.enum > h2 > div.comment, div.enum > h2 > div.top {
+      font-size: 0.54em;
+    }
+  </style>
+</head>
+<body>
+  <div class="comment">
+    // source: «proto.sourcePath»
+  </div>
+  <div>
+    <b>«if(module.o.get("raw"))»package«else»namespace«endif»</b> «proto.declaredPackageName»;
+  </div>
+  «proto.messages:Message:message_block(module, false); separator="\n"»
+  «proto.enumGroups:EnumGroup:enum_block(module, false); separator="\n"»
+</body>
+</html>
+#end
+
+#enum_block(EnumGroup eg, ProtoModule module, boolean nested)
+<div class="enum«if(nested)» nested«endif»">
+  <h2>
+    «enum_top(eg, module)»
+    <span>enum</span>
+    <a href="#«eg.relativeName; format=".==-"»" id="«eg.relativeName; format=".==-"»">
+      «if(module.o.get("raw"))»
+      «eg.name»
+      «else»
+      «eg.cppRelativeName»
+      «endif»
+    </a>
+    «if(!module.o.get("raw"))»
+    <span class="attr">: <b>«get_fbs_int_type(eg.ta.name)»</b>«ta_params(eg.ta, module)»</span>
+    «endif»
+    «eg.declaredValues:EnumGroup.Value:v_decl(module); separator="\n"»
+  </h2>
+</div>
+#end
+
+#enum_top(EnumGroup eg, ProtoModule module)
+«if(module.o.get("raw"))»
+«for(String c : eg.comments)»
+<div class="comment">/// «c»</div>
+«endfor»
+«for(Annotation a : eg.a.values())»
+<div class="top">@«a.name»«if(!a.emptyP)»(«for(Map.Entry<String,Object> entry : a.p.entrySet())»«if(entry$$i != 0)», «endif»«entry.key» = «entry.value»«endfor»)«endif»</div>
+«endfor»
+«endif»
+#end
+
+#v_decl(EnumGroup.Value v, ProtoModule module)
+<div class="field">
+  «if(module.o.get("raw"))»
+  <span>«v.name»</span> = «v.number»;
+  «else»
+  <span>«v.name»</span> = «if(v.eg.ta.p.get("bit_flags"))»«get_bit_pot_shiftnum(v.number)»«else»«v.number»«endif»,
+  «endif»
+</div>
+#end
+
+
+#message_block(Message message, ProtoModule module, boolean nested)
+<div class="message«if(nested)» nested«endif»">
+  <h2>
+    «message_top(message, module)»
+    <span>«message_kind(message, module)»</span>
+    <a href="#«message.relativeName; format=".==-"»" id="«message.relativeName; format=".==-"»">
+      «if(module.o.get("raw"))»
+      «message.name»
+      «else»
+      «message.cppRelativeName»
+      «endif»
+    </a>
+    «if(!module.o.get("raw") && message.ta)»
+    «if(!message.ta.emptyP)»
+    <span class="attr">«ta_params(message.ta, module)»</span>
+    «endif»
+    «endif»
+  </h2>
+  «if(module.o.get("raw"))»
+  «message.declaredFields:Field<?>:raw_field_decl(module); separator="\n"»
+  «message.nestedMessages:Message:message_block(module, true); separator="\n"»
+  «message.nestedEnumGroups:EnumGroup:enum_block(module, true); separator="\n"»
+  «else»
+  «message.declaredFields:Field<?>:fbs_field_decl(module); separator="\n"»
+  «endif»
+</div>
+«if(!module.o.get("raw"))»
+«message.nestedMessages:Message:message_block(module, true); separator="\n"»
+«message.nestedEnumGroups:EnumGroup:enum_block(module, true); separator="\n"»
+«endif»
+#end
+
+#message_top(Message message, ProtoModule module)
+«if(module.o.get("raw"))»
+«for(String c : message.comments)»
+<div class="comment">/// «c»</div>
+«endfor»
+«for(Annotation a : message.a.values())»
+<div class="top">@«a.name»«if(!a.emptyP)»(«for(Map.Entry<String,Object> entry : a.p.entrySet())»«if(entry$$i != 0)», «endif»«entry.key» = «entry.value»«endfor»)«endif»</div>
+«endfor»
+«endif»
+#end
+
+#message_kind(Message message, ProtoModule module)%%
+«if(module.o.get("raw"))»
+message
+«elseif(message.a.get("struct"))»
+struct
+«else»
+table
+«endif»
+#end
+
+#fbs_field_decl(Field<?> field, ProtoModule module)
+<div class="field«if(field.enumField)» e«endif»">
+  <span>«field.name»</span>: «if(field.repeated)»[«endif»«fbs_field_type(field, module)»«if(field.repeated)»]«endif»
+  (id: «field.number-1»«if(field.o.get("deprecated"))», deprecated«endif»);
+</div>
+#end
+
+#fbs_field_type(Field<?> field, ProtoModule module)%%
+«if(field.userDefinedType)»
+<a href="#«field.userDefinedType.relativeName; format=".==-"»">«field.fbsType»</a>
+«else»
+<b><span>«field.fbsType»</span></b>
+«endif»
+#end
+
+#raw_field_decl(Field<?> field, ProtoModule module)
+<div class="field«if(field.enumField)» e«endif»">
+  «for(String c : field.comments)»
+  <div class="comment">/// «c»</div>
+  «endfor»
+  <i>«field.modifier; format="LOWER"»</i> «raw_field_type(field, module)» <span>«field.name»</span> = «field.number»;
+</div>
+#end
+
+#raw_field_type(Field<?> field, ProtoModule module)%%
+«if(field.userDefinedType)»
+<a href="#«field.userDefinedType.relativeName; format=".==-"»">«field.javaType»</a>
+«else»
+<b><span>«field.class.simpleName; format="LOWER"»</span></b>
+«endif»
+#end

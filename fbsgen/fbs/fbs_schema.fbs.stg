@@ -1,0 +1,30 @@
+import "fbsgen/base"
+import "fbsgen/dict"
+import "fbsgen/fbs/common"
+
+registry_block(registry, module) ::= <<
+«registry_block_main(registry, module, module.o.("fbs_schema_stg"), module.o.("fbs_schema_fqcn"))»
+>>
+
+registry_block_main(registry, module, stg, fqcn) ::= <<
+«if(is_null_or_empty.(stg))»
+«module.err.("The option: fbs_schema_stg requires a value.")»
+«endif»
+namespace «module.config.("fbsgen/fbs/fbs_schema.fbs.package_name")»;
+
+«registry.enumGroups:enum_block(module, stg, fqcn)»
+«registry.messages:message_block(module, stg, fqcn)»
+>>
+
+enum_block(eg, module, stg, fqcn) ::= <<
+«if(module.w.k.(stg).kin.(eg.proto.o.("stgs")))»
+«fbs_enum_block(eg, module, eg.nested, fqcn)»
+«endif»
+>>
+
+message_block(message, module, stg, fqcn) ::= <<
+«if(module.w.k.(stg).kin.(message.proto.o.("stgs")))»
+«fbs_message_block(message, module, message.nested, false, fqcn)»
+«endif»
+>>
+

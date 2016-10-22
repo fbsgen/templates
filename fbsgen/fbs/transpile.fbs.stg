@@ -1,0 +1,20 @@
+import "fbsgen/base"
+import "fbsgen/dict"
+import "fbsgen/fbs/common"
+
+proto_block(proto, module) ::= <<
+«proto.importPaths:{p|include "«p; format="\.proto==.fbs"»";}; separator="\n"»
+
+namespace «proto.packageName»;
+
+«proto_body(proto, module, format_to_string.({«proto.messages:fbs_message_block(module); separator="\n\n"»}))»
+>>
+
+proto_body(proto, module, messages) ::= <<
+«proto.enumGroups:fbs_enum_block(module); separator="\n"»
+«module.w.list:{t|«t»}; separator="\n"»
+
+«messages»
+>>
+
+

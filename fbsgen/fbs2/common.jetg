@@ -1,0 +1,70 @@
+#import fbsgen/base#
+
+#fbs_enum_name(EnumGroup eg, ProtoModule module, boolean fqcn)%%
+«if(fqcn)»
+«eg.cppFullName; format="::==__"»
+«else»
+«eg.cppRelativeName»
+«endif»
+#end
+
+#fbs_message_name(Message message, ProtoModule module, boolean fqcn)%%
+«if(fqcn)»
+«message.cppFullName; format="::==__"»
+«else»
+«message.cppRelativeName»
+«endif»
+#end
+
+#fbs_field_udt_name(Field<?> field, ProtoModule module, boolean fqcn)%%
+«if(fqcn)»
+«field.udt.cppFullName; format="::==__"»
+«else»
+«field.udt.cppRelativeName»
+«endif»
+#end
+
+#--
+#fbs_v_decl(EnumGroup.Value v, ProtoModule module)%%
+  «v.name» = «if(v.eg.ta.p.get("bit_flags"))»«get_bit_pot_shiftnum(v.number)»«else»«v.number»«endif»
+#end
+
+#fbs_enum_block(EnumGroup eg, ProtoModule module, nested=false, fqcn=false)
+enum «fbs_enum_name(eg, module, fqcn)» : «get_fbs_int_type(eg.ta.name)»«ta_params(eg.ta, module)» {
+«eg.declaredValues:EnumGroup.Value:fbs_v_decl(module); separator=",\n"»
+}
+#end
+--#
+
+#fbs_enum_block(EnumGroup eg, ProtoModule module, nested=false, fqcn=false)
+enum «fbs_enum_name(eg, module, fqcn)» : «get_fbs_int_type(eg.ta.name)»«ta_params(eg.ta, module)» {
+«for(EnumGroup.Value v : eg.declaredValues)»«if(v$$i != 0)»,\n«endif»  «v.name» = «if(eg.ta.p.get("bit_flags"))»«get_bit_pot_shiftnum(v.number)»«else»«v.number»«endif»«endfor»
+}
+#end
+
+#fbs_message_block(Message message, ProtoModule module, com.dyuproject.jetg.runtime.JetWriter outEnumGroup, nested=false, traverse_nested=true, fqcn=false)
+«get_fbs_message_type(message)» «fbs_message_name(message, module, fqcn)»«if(message.ta)»«ta_params(message.ta, module)»«endif» {
+  «for(Field<?> f : message.declaredFields)»
+  «f.name»: «if(f.repeated)»[«endif»«if(f.udt)»«fbs_field_udt_name(f, module, fqcn)»«else»«f.fbsType»«endif»«if(f.repeated)»]«endif» (id: «f.number - 1»«if(f.o.get("deprecated"))», deprecated«endif»);
+  «endfor»
+}
+«#emit»
+if (traverse_nested && !message.getNestedEnumGroups().isEmpty()) {
+  JetWriter out = outEnumGroup == null ? $out : outEnumGroup;
+  for (com.dyuproject.fbsgen.parser.EnumGroup eg : message.getNestedEnumGroups()) {
+    fbs_enum_block(out, eg, module, true, fqcn);
+    out.println();
+  }
+}
+if (traverse_nested) {
+  int i = 0;
+  for (com.dyuproject.fbsgen.parser.Message m : message.getNestedMessages()) {
+    if (i++ == 0) $out.println();
+    fbs_message_block($out, m, module, outEnumGroup, true, traverse_nested, fqcn);
+  }
+}
+«#»
+##«if(traverse_nested)»
+##«message.nestedMessages:Message:fbs_message_block(module, outEnumGroup, true, traverse_nested, fqcn); separator="\n"»
+##«endif»
+#end

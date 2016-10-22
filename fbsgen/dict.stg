@@ -1,0 +1,5 @@
+// implicitly exports the dictionaries (maps)
+
+error(proto, msg) ::= <<
+«proto.error.(format_to_string.({«msg» [ «proto.sourcePath» ]}))»
+>>

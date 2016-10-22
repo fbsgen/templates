@@ -1,0 +1,33 @@
+#import fbsgen/base#
+#import fbsgen/fbs2/common
+#define(ProtoModule module, Proto proto)
+«proto_block(proto, module)»
+#proto_block(Proto proto, ProtoModule module)
+«for(String p : proto.importPaths)»
+include "«p; format="\\.proto==\\.fbs"»";
+«endfor»
+
+namespace «proto.packageName»;
+
+«#emit»
+com.dyuproject.jetg.utils.UnsafeCharArrayWriter writerMessage = new_writer(256),
+        writerEg = new_writer(256);
+JetWriter outMessage = new_jet_writer(writerMessage),
+        outEg = new_jet_writer(writerEg);
+int i = 0;
+for (com.dyuproject.fbsgen.parser.Message m : proto.getMessages()) {
+  if (i++ != 0) outMessage.printLine(2);
+  common_jetg.fbs_message_block(outMessage, m, module, outEg);
+}
+if (i != 0) outMessage.println();
+«#»
+«proto.enumGroups:EnumGroup:common::fbs_enum_block(module); separator="\n"»
+«#emit»
+writerEg.writeTo($out);
+$out.println();
+writerMessage.writeTo($out);
+«#»
+#end
+
+
+
